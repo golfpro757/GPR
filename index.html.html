@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>⛳ GolfTec Lesson Tracker</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Georgia, serif; background: #f0f4f8; min-height: 100vh; }
+  input[type=number]::-webkit-inner-spin-button,
+  input[type=number]::-webkit-outer-spin-button { opacity: 1; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect } = React;
+
+const CLUBS = [
+  "Driver","3-Wood","5-Wood","Hybrid",
+  "3-Iron","4-Iron","5-Iron","6-Iron","7-Iron","8-Iron","9-Iron",
+  "PW","GW","SW","LW","Putter"
+];
+const SHOT_TYPES = [
+  "Full Swing","Chipping","Pitching","Bunker","Putting",
+  "Draw","Fade","Punch Shot","Flop Shot","Alignment","Setup/Grip"
+];
+const OPTIMOTION = [
+  "Shoulder Turn","Shoulder Sway","Shoulder Bend","Shoulder Tilt",
+  "Hip Turn","Hip Sway","Hip Bend","Hip Tilt"
+];
+const STORAGE_KEY = "golftec_students_v2";
+
+function loadData() {
+  try { const r = localStorage.getItem(STORAGE_KEY); return r ? JSON.parse(r) : []; }
+  catch { return []; }
+}
+function saveData(s) { localStorage.setItem(STORAGE_KEY, JSON.stringify(s)); }
+
+function formatDate(iso) {
+  if (!iso) return "";
+  return new Date(iso).toLocaleDateString("en-US", { month:"short", day:"numeric", year:"numeric" });
+}
+
+function clubCoverage(student) {
+  const worked = new Set();
+  (student.sessions||[]).forEach(s => (s.clubs||[]).forEach(c => worked.add(c)));
+  const planned = new Set(student.clubs||[]);
+  return { worked, planned };
+}
+
+function buildFrequency(sessions) {
+  const clubCount={}, shotCount={}, optCount={};
+  sessions.forEach(s => {
+    (s.clubs||[]).forEach(c => { clubCount[c]=(clubCount[c]||0)+1; });
+    (s.shots||[]).forEach(t => { shotCount[t]=(shotCount[t]||0)+1; });
+    (s.optimotion||[]).forEach(o => { optCount[o]=(optCount[o]||0)+1; });
+  });
+  return { clubCount, shotCount, optCount };
+}
+
+function toggleArr(arr, val) {
+  return arr.includes(val) ? arr.filter(x => x !== val) : [...arr, val];
+}
+
+const css = {
+  page: { minHeight:"100vh", background:"#f0f4f8", fontFamily:"Georgia,serif" },
+  header: { background:"#1a3a2a", color:"#fff", padding:"16px 20px", position:"sticky", top:0, zIndex:10, boxShadow:"0 2px 8px rgba(0,0,0,.3)" },
+  headerInner: { maxWidth:700, margin:"0 auto", display:"flex", justifyContent:"space-between", alignItems:"center" },
+  logo: { fontSize:20, fontWeight:700, letterSpacing:.5, color:"#a8d5b5" },
+  subtitle: { fontSize:12, color:"#6b9e7e", marginTop:2 },
+  container: { maxWidth:700, margin:"0 auto", padding:"24px 16px" },
+  search: { width:"100%", padding:"10px 16px", borderRadius:10, border:"1px solid #d1d5db", fontSize:15, marginBottom:20, fontFamily:"inherit", outline:"none" },
+  grid: { display:"grid", gap:14 },
+  card: { background:"#fff", borderRadius:12, padding:"16px 18px", cursor:"pointer", boxShadow:"0 1px 4px rgba(0,0,0,.08)", borderLeft:"4px solid #2d6a4f" },
+  cardTop: { display:"flex", alignItems:"center", gap:12, marginBottom:8 },
+  avatar: { width:40, height:40, borderRadius:"50%", background:"#2d6a4f", color:"#fff", display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, fontWeight:700, flexShrink:0 },
+  cardName: { fontWeight:700, fontSize:16, color:"#1a3a2a" },
+  cardMeta: { fontSize:12, color:"#6b7280" },
+  cardLast: { fontSize:12, color:"#6b7280", marginTop:4 },
+  cardAlert: { fontSize:12, color:"#b45309", background:"#fffbeb", borderRadius:6, padding:"4px 8px", marginTop:8 },
+  empty: { textAlign:"center", color:"#9ca3af", padding:"40px 0", fontSize:15 },
+  back: { background:"none", border:"none", color:"#a8d5b5", fontSize:15, cursor:"pointer", padding:0 },
+  btnGreen: { background:"#2d6a4f", color:"#fff", border:"none", borderRadius:8, padding:"10px 20px", fontSize:14, fontWeight:600, cursor:"pointer", fontFamily:"inherit" },
+  btnGold: { background:"#92400e", color:"#fef3c7", border:"none", borderRadius:8, padding:"10px 20px", fontSize:14, fontWeight:600, cursor:"pointer", fontFamily:"inherit" },
+  btnRed: { background:"#dc2626", color:"#fff", border:"none", borderRadius:8, padding:"8px 14px", fontSize:12, cursor:"pointer", fontFamily:"inherit" },
+  formCard: { background:"#fff", borderRadius:14, padding:"24px 20px", boxShadow:"0 1px 6px rgba(0,0,0,.08)" },
+  sectionTitle: { fontWeight:700, fontSize:13, textTransform:"uppercase", letterSpacing:1, color:"#374151" },
+  label: { display:"block", fontSize:13, color:"#6b7280", marginBottom:4 },
+  input: { width:"100%", padding:"9px 12px", borderRadius:8, border:"1px solid #d1d5db", fontSize:14, fontFamily:"inherit", outline:"none", marginBottom:10 },
+  textarea: { width:"100%", padding:"9px 12px", borderRadius:8, border:"1px solid #d1d5db", fontSize:14, fontFamily:"inherit", resize:"vertical", outline:"none" },
+  infoRow: { display:"flex", gap:8, flexWrap:"wrap", marginBottom:10 },
+  pill: { background:"#e5e7eb", borderRadius:20, padding:"4px 12px", fontSize:13, color:"#374151" },
+  goalBox: { background:"#f0fdf4", border:"1px solid #bbf7d0", borderRadius:8, padding:"10px 14px", fontSize:14, color:"#166534", marginBottom:16 },
+  coverageBox: { background:"#fff", borderRadius:12, padding:"14px 16px", boxShadow:"0 1px 4px rgba(0,0,0,.07)", marginBottom:16 },
+  coverChip: { borderRadius:20, padding:"4px 12px", fontSize:13, fontWeight:500, display:"inline-block", margin:"2px" },
+  alertText: { fontSize:12, color:"#b45309", marginTop:10 },
+  sessionCard: { background:"#fff", borderRadius:10, padding:"14px 16px", marginBottom:10, boxShadow:"0 1px 3px rgba(0,0,0,.07)", borderLeft:"3px solid #2d6a4f" },
+  sessionDate: { fontWeight:700, color:"#1a3a2a", marginBottom:6, fontSize:14 },
+  sessionLine: { fontSize:14, color:"#374151", marginBottom:3 },
+  sessionNotes: { fontSize:13, color:"#6b7280", marginTop:6, fontStyle:"italic" },
+  studentBadge: { background:"#f0fdf4", border:"1px solid #bbf7d0", borderRadius:8, padding:"8px 14px", fontSize:14, color:"#166534", marginBottom:20, fontWeight:600 },
+  reviewHero: { display:"flex", gap:16, alignItems:"flex-start", marginBottom:16, background:"#fff", borderRadius:14, padding:"20px 18px", boxShadow:"0 1px 6px rgba(0,0,0,.08)" },
+  reviewAvatar: { width:56, height:56, borderRadius:"50%", background:"#1a1a2e", color:"#f4c430", display:"flex", alignItems:"center", justifyContent:"center", fontSize:26, fontWeight:800, flexShrink:0 },
+  reviewName: { fontWeight:800, fontSize:20, color:"#1a1a2e" },
+  reviewMeta: { fontSize:13, color:"#6b7280", marginTop:2 },
+  reviewGoal: { fontSize:13, color:"#166534", marginTop:6, fontStyle:"italic" },
+  reviewCard: { background:"#fff", borderRadius:14, padding:"18px", marginBottom:16, boxShadow:"0 1px 6px rgba(0,0,0,.07)" },
+  reviewCardTitle: { fontWeight:700, fontSize:15, color:"#1a1a2e", marginBottom:4 },
+  scoreRow: { display:"flex", alignItems:"center", gap:12, marginTop:14, flexWrap:"wrap" },
+  scoreBox: { flex:1, minWidth:110, background:"#f8fafc", border:"2px solid #e2e8f0", borderRadius:12, padding:"14px 12px", textAlign:"center" },
+  scoreLabel: { fontSize:11, color:"#6b7280", marginBottom:6, fontWeight:600, textTransform:"uppercase", letterSpacing:.5 },
+  scoreNum: { fontSize:38, fontWeight:800, color:"#1a3a2a" },
+  scoreInput: { width:"90%", padding:"6px 4px", borderRadius:8, border:"none", background:"transparent", fontSize:36, fontWeight:800, textAlign:"center", fontFamily:"inherit", outline:"none", color:"#16a34a" },
+  scoreArrow: { fontSize:22, color:"#9ca3af", flexShrink:0 },
+  barRow: { display:"flex", alignItems:"center", gap:10, marginBottom:10 },
+  barLabel: { width:130, fontSize:13, color:"#374151", fontWeight:500, flexShrink:0 },
+  planTag: { background:"#dbeafe", color:"#1e40af", borderRadius:4, padding:"1px 5px", fontSize:10, fontWeight:600, marginLeft:4 },
+  barTrack: { flex:1, height:10, background:"#f1f5f9", borderRadius:10, overflow:"hidden" },
+  barFill: { height:"100%", borderRadius:10 },
+  barCount: { fontSize:12, color:"#6b7280", width:72, textAlign:"right", flexShrink:0 },
+  renewalBox: { background:"linear-gradient(135deg,#1a1a2e 0%,#2d6a4f 100%)", borderRadius:14, padding:"22px 20px", marginTop:4, color:"#fff" },
+  renewalTitle: { fontSize:18, fontWeight:800, color:"#f4c430", marginBottom:8 },
+  renewalText: { fontSize:14, lineHeight:1.7, color:"#d1fae5" },
+};
+
+function Section({ title, children }) {
+  return (
+    <div style={{ marginBottom:20 }}>
+      <div style={css.sectionTitle}>{title}</div>
+      <div style={{ marginTop:8 }}>{children}</div>
+    </div>
+  );
+}
+
+function ChipGrid({ options, selected, onToggle, color, highlight=[] }) {
+  return (
+    <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+      {options.map(o => {
+        const active = selected.includes(o);
+        const inPlan = highlight.includes(o);
+        return (
+          <button key={o} onClick={() => onToggle(o)} style={{
+            padding:"5px 12px", borderRadius:20,
+            border:`2px solid ${active ? color : inPlan ? color+"88" : "#d1d5db"}`,
+            background: active ? color : inPlan ? color+"18" : "#f9fafb",
+            color: active ? "#fff" : inPlan ? color : "#374151",
+            fontFamily:"inherit", fontSize:13,
+            fontWeight: active ? 600 : 400, cursor:"pointer",
+          }}>{o}</button>
+        );
+      })}
+    </div>
+  );
+}
+
+function App() {
+  const [students, setStudents] = useState([]);
+  const [view, setView] = useState("roster");
+  const [activeId, setActiveId] = useState(null);
+  const [search, setSearch] = useState("");
+  const [reviewScore, setReviewScore] = useState("");
+
+  const emptyStudentForm = { name:"", phone:"", email:"", notes:"", startingScore:"", clubs:[], shots:[] };
+  const emptySessionForm = { date: new Date().toISOString().slice(0,10), clubs:[], shots:[], optimotion:[], notes:"" };
+
+  const [studentForm, setStudentForm] = useState(emptyStudentForm);
+  const [sessionForm, setSessionForm] = useState(emptySessionForm);
+
+  useEffect(() => { setStudents(loadData()); }, []);
+  useEffect(() => { saveData(students); }, [students]);
+
+  const activeStudent = students.find(s => s.id === activeId);
+
+  function addStudent() {
+    if (!studentForm.name.trim()) return;
+    setStudents(prev => [...prev, { id: Date.now(), ...studentForm, sessions:[] }]);
+    setStudentForm(emptyStudentForm);
+    setView("roster");
+  }
+
+  function deleteStudent(id) {
+    if (!confirm("Remove this student?")) return;
+    setStudents(prev => prev.filter(s => s.id !== id));
+    setView("roster");
+  }
+
+  function addSession() {
+    if (!sessionForm.clubs.length && !sessionForm.shots.length && !sessionForm.optimotion.length && !sessionForm.notes.trim()) return;
+    setStudents(prev => prev.map(s =>
+      s.id === activeId ? { ...s, sessions:[{ id:Date.now(), ...sessionForm }, ...s.sessions] } : s
+    ));
+    setSessionForm(emptySessionForm);
+    setView("student");
+  }
+
+  const filtered = students.filter(s => s.name.toLowerCase().includes(search.toLowerCase()));
+
+  // ── ROSTER ──────────────────────────────────────────────────
+  if (view === "roster") return (
+    <div style={css.page}>
+      <header style={css.header}>
+        <div style={css.headerInner}>
+          <div>
+            <div style={css.logo}>⛳ GolfTec</div>
+            <div style={css.subtitle}>Lesson Tracker</div>
+          </div>
+          <button style={css.btnGreen} onClick={() => setView("addStudent")}>+ New Student</button>
+        </div>
+      </header>
+      <div style={css.container}>
+        <input style={css.search} placeholder="Search students..." value={search} onChange={e => setSearch(e.target.value)} />
+        {filtered.length === 0 && <div style={css.empty}>{students.length === 0 ? "No students yet. Add your first one!" : "No results found."}</div>}
+        <div style={css.grid}>
+          {filtered.map(s => {
+            const { worked, planned } = clubCoverage(s);
+            const notWorked = [...planned].filter(c => !worked.has(c));
+            const last = s.sessions?.[0];
+            return (
+              <div key={s.id} style={css.card} onClick={() => { setActiveId(s.id); setView("student"); }}>
+                <div style={css.cardTop}>
+                  <div style={css.avatar}>{s.name.charAt(0).toUpperCase()}</div>
+                  <div>
+                    <div style={css.cardName}>{s.name}</div>
+                    <div style={css.cardMeta}>{s.sessions.length} session{s.sessions.length!==1?"s":""}{s.startingScore ? ` · Started avg: ${s.startingScore}` : ""}</div>
+                  </div>
+                </div>
+                {last && <div style={css.cardLast}>Last: {formatDate(last.date)} · {last.clubs.join(", ") || last.shots.join(", ") || "Notes only"}</div>}
+                {notWorked.length > 0 && <div style={css.cardAlert}>⚠ Not yet covered: {notWorked.join(", ")}</div>}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+
+  // ── ADD STUDENT ─────────────────────────────────────────────
+  if (view === "addStudent") return (
+    <div style={css.page}>
+      <header style={css.header}>
+        <div style={css.headerInner}>
+          <button style={css.back} onClick={() => setView("roster")}>← Back</button>
+          <div style={css.logo}>New Student</div>
+          <div style={{ width:80 }} />
+        </div>
+      </header>
+      <div style={css.container}>
+        <div style={css.formCard}>
+          <Section title="Contact Info">
+            <label style={css.label}>Name *</label>
+            <input style={css.input} value={studentForm.name} onChange={e => setStudentForm(p=>({...p,name:e.target.value}))} placeholder="Full name" />
+            <label style={css.label}>Phone</label>
+            <input style={css.input} value={studentForm.phone} onChange={e => setStudentForm(p=>({...p,phone:e.target.value}))} placeholder="(555) 000-0000" />
+            <label style={css.label}>Email</label>
+            <input style={css.input} value={studentForm.email} onChange={e => setStudentForm(p=>({...p,email:e.target.value}))} placeholder="email@example.com" />
+          </Section>
+          <Section title="Starting Average Score">
+            <label style={css.label}>What is their average score per round right now?</label>
+            <input style={{...css.input,maxWidth:160}} type="number" value={studentForm.startingScore} onChange={e => setStudentForm(p=>({...p,startingScore:e.target.value}))} placeholder="e.g. 95" />
+          </Section>
+          <Section title="Lesson Plan — Clubs to Cover">
+            <ChipGrid options={CLUBS} selected={studentForm.clubs} onToggle={v => setStudentForm(p=>({...p,clubs:toggleArr(p.clubs,v)}))} color="#2d6a4f" />
+          </Section>
+          <Section title="Lesson Plan — Shots to Cover">
+            <ChipGrid options={SHOT_TYPES} selected={studentForm.shots} onToggle={v => setStudentForm(p=>({...p,shots:toggleArr(p.shots,v)}))} color="#1d4e89" />
+          </Section>
+          <Section title="Goal / Notes">
+            <textarea style={css.textarea} value={studentForm.notes} onChange={e => setStudentForm(p=>({...p,notes:e.target.value}))} placeholder="e.g. Wants to break 90, struggles with driver consistency..." rows={3} />
+          </Section>
+          <button style={css.btnGreen} onClick={addStudent}>Save Student</button>
+        </div>
+      </div>
+    </div>
+  );
+
+  // ── STUDENT DETAIL ──────────────────────────────────────────
+  if (view === "student" && activeStudent) {
+    const { worked, planned } = clubCoverage(activeStudent);
+    const notWorked = [...planned].filter(c => !worked.has(c));
+    return (
+      <div style={css.page}>
+        <header style={css.header}>
+          <div style={css.headerInner}>
+            <button style={css.back} onClick={() => setView("roster")}>← Roster</button>
+            <div style={css.logo}>{activeStudent.name}</div>
+            <button style={css.btnRed} onClick={() => deleteStudent(activeStudent.id)}>Remove</button>
+          </div>
+        </header>
+        <div style={css.container}>
+          <div style={css.infoRow}>
+            {activeStudent.phone && <span style={css.pill}>📞 {activeStudent.phone}</span>}
+            {activeStudent.email && <span style={css.pill}>✉ {activeStudent.email}</span>}
+            {activeStudent.startingScore && <span style={css.pill}>🏌 Starting avg: {activeStudent.startingScore}</span>}
+          </div>
+          {activeStudent.notes && <div style={css.goalBox}>🎯 {activeStudent.notes}</div>}
+          {planned.size > 0 && (
+            <div style={css.coverageBox}>
+              <div style={css.sectionTitle}>Plan Coverage</div>
+              <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginTop:8 }}>
+                {[...planned].map(c => (
+                  <span key={c} style={{...css.coverChip, background:worked.has(c)?"#d1fae5":"#fee2e2", color:worked.has(c)?"#065f46":"#991b1b"}}>
+                    {worked.has(c)?"✓":"○"} {c}
+                  </span>
+                ))}
+              </div>
+              {notWorked.length > 0 && <div style={css.alertText}>Not yet covered: {notWorked.join(", ")}</div>}
+            </div>
+          )}
+          <div style={{ display:"flex", gap:10, margin:"20px 0 16px", flexWrap:"wrap" }}>
+            <button style={css.btnGreen} onClick={() => setView("addSession")}>+ Log Session</button>
+            <button style={css.btnGold} onClick={() => { setReviewScore(""); setView("gamePlanReview"); }}>📋 Game Plan Review</button>
+          </div>
+          <div style={{...css.sectionTitle, marginBottom:12}}>Sessions ({activeStudent.sessions.length})</div>
+          {activeStudent.sessions.length === 0 && <div style={css.empty}>No sessions logged yet.</div>}
+          {activeStudent.sessions.map(s => (
+            <div key={s.id} style={css.sessionCard}>
+              <div style={css.sessionDate}>{formatDate(s.date)}</div>
+              {s.clubs.length > 0 && <div style={css.sessionLine}><b>Clubs:</b> {s.clubs.join(", ")}</div>}
+              {s.shots.length > 0 && <div style={css.sessionLine}><b>Shots:</b> {s.shots.join(", ")}</div>}
+              {s.optimotion && s.optimotion.length > 0 && <div style={css.sessionLine}><b>Optimotion:</b> {s.optimotion.join(", ")}</div>}
+              {s.notes && <div style={css.sessionNotes}>{s.notes}</div>}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // ── ADD SESSION ─────────────────────────────────────────────
+  if (view === "addSession" && activeStudent) return (
+    <div style={css.page}>
+      <header style={css.header}>
+        <div style={css.headerInner}>
+          <button style={css.back} onClick={() => setView("student")}>← Back</button>
+          <div style={css.logo}>Log Session</div>
+          <div style={{ width:80 }} />
+        </div>
+      </header>
+      <div style={css.container}>
+        <div style={css.formCard}>
+          <div style={css.studentBadge}>Student: {activeStudent.name}</div>
+          <Section title="Date">
+            <input type="date" style={css.input} value={sessionForm.date} onChange={e => setSessionForm(p=>({...p,date:e.target.value}))} />
+          </Section>
+          <Section title="Clubs Worked On">
+            <ChipGrid options={CLUBS} selected={sessionForm.clubs} onToggle={v => setSessionForm(p=>({...p,clubs:toggleArr(p.clubs,v)}))} color="#2d6a4f" highlight={activeStudent.clubs||[]} />
+          </Section>
+          <Section title="Shot Types Worked On">
+            <ChipGrid options={SHOT_TYPES} selected={sessionForm.shots} onToggle={v => setSessionForm(p=>({...p,shots:toggleArr(p.shots,v)}))} color="#1d4e89" highlight={activeStudent.shots||[]} />
+          </Section>
+          <Section title="Optimotion">
+            <ChipGrid options={OPTIMOTION} selected={sessionForm.optimotion} onToggle={v => setSessionForm(p=>({...p,optimotion:toggleArr(p.optimotion,v)}))} color="#6b21a8" />
+          </Section>
+          <Section title="Notes">
+            <textarea style={css.textarea} value={sessionForm.notes} onChange={e => setSessionForm(p=>({...p,notes:e.target.value}))} placeholder="Drills, observations, next focus..." rows={3} />
+          </Section>
+          <button style={css.btnGreen} onClick={addSession}>Save Session</button>
+        </div>
+      </div>
+    </div>
+  );
+
+  // ── GAME PLAN REVIEW ────────────────────────────────────────
+  if (view === "gamePlanReview" && activeStudent) {
+    const { clubCount, shotCount, optCount } = buildFrequency(activeStudent.sessions);
+    const { worked, planned } = clubCoverage(activeStudent);
+    const totalSessions = activeStudent.sessions.length;
+    const scoreDiff = reviewScore && activeStudent.startingScore
+      ? parseInt(activeStudent.startingScore) - parseInt(reviewScore) : null;
+
+    const allClubs = [...new Set(activeStudent.sessions.flatMap(s=>s.clubs||[]))].sort((a,b)=>(clubCount[b]||0)-(clubCount[a]||0));
+    const allShots = [...new Set(activeStudent.sessions.flatMap(s=>s.shots||[]))].sort((a,b)=>(shotCount[b]||0)-(shotCount[a]||0));
+    const allOpt   = [...new Set(activeStudent.sessions.flatMap(s=>s.optimotion||[]))].sort((a,b)=>(optCount[b]||0)-(optCount[a]||0));
+    const maxC = Math.max(...Object.values(clubCount), 1);
+    const maxS = Math.max(...Object.values(shotCount), 1);
+    const maxO = Math.max(...Object.values(optCount), 1);
+
+    return (
+      <div style={css.page}>
+        <header style={{...css.header, background:"#1a1a2e"}}>
+          <div style={css.headerInner}>
+            <button style={css.back} onClick={() => setView("student")}>← Back</button>
+            <div style={{...css.logo, color:"#f4c430"}}>📋 Game Plan Review</div>
+            <div style={{ width:80 }} />
+          </div>
+        </header>
+        <div style={css.container}>
+
+          {/* Hero */}
+          <div style={css.reviewHero}>
+            <div style={css.reviewAvatar}>{activeStudent.name.charAt(0).toUpperCase()}</div>
+            <div style={{ flex:1 }}>
+              <div style={css.reviewName}>{activeStudent.name}</div>
+              <div style={css.reviewMeta}>{totalSessions} lesson{totalSessions!==1?"s":""} completed</div>
+              {activeStudent.notes && <div style={css.reviewGoal}>🎯 {activeStudent.notes}</div>}
+            </div>
+          </div>
+
+          {/* Score */}
+          <div style={css.reviewCard}>
+            <div style={css.reviewCardTitle}>📊 Score Progress</div>
+            <div style={css.scoreRow}>
+              <div style={css.scoreBox}>
+                <div style={css.scoreLabel}>Starting Average</div>
+                <div style={css.scoreNum}>{activeStudent.startingScore || "—"}</div>
+              </div>
+              <div style={css.scoreArrow}>→</div>
+              <div style={{...css.scoreBox, background:"#f0fdf4", border:"2px solid #86efac"}}>
+                <div style={css.scoreLabel}>Current Average</div>
+                <input type="number" style={css.scoreInput} placeholder="—"
+                  value={reviewScore} onChange={e => setReviewScore(e.target.value)} />
+              </div>
+            </div>
+            {scoreDiff !== null && (
+              <div style={{ textAlign:"center", marginTop:14, fontSize:16, fontWeight:700, color: scoreDiff>0?"#16a34a":scoreDiff<0?"#dc2626":"#6b7280" }}>
+                {scoreDiff>0 ? `🎉 Improved by ${scoreDiff} stroke${scoreDiff!==1?"s":""}!`
+                  : scoreDiff<0 ? `📈 ${Math.abs(scoreDiff)} stroke${Math.abs(scoreDiff)!==1?"s":""} to go — keep working!`
+                  : `📊 Score holding steady`}
+              </div>
+            )}
+            {!reviewScore && <div style={{ fontSize:12, color:"#9ca3af", textAlign:"center", marginTop:8 }}>Enter current avg score above to see progress</div>}
+          </div>
+
+          {/* Clubs */}
+          {allClubs.length > 0 && (
+            <div style={css.reviewCard}>
+              <div style={css.reviewCardTitle}>🏌 Clubs Worked On</div>
+              <div style={{ marginTop:12 }}>
+                {allClubs.map(club => {
+                  const count = clubCount[club]||0;
+                  const inPlan = (activeStudent.clubs||[]).includes(club);
+                  return (
+                    <div key={club} style={css.barRow}>
+                      <div style={css.barLabel}>{club}{inPlan && <span style={css.planTag}>plan</span>}</div>
+                      <div style={css.barTrack}><div style={{...css.barFill, width:`${Math.round((count/maxC)*100)}%`, background:"#2d6a4f"}} /></div>
+                      <div style={css.barCount}>{count} session{count!==1?"s":""}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Shots */}
+          {allShots.length > 0 && (
+            <div style={css.reviewCard}>
+              <div style={css.reviewCardTitle}>🎯 Shot Types Worked On</div>
+              <div style={{ marginTop:12 }}>
+                {allShots.map(shot => {
+                  const count = shotCount[shot]||0;
+                  const inPlan = (activeStudent.shots||[]).includes(shot);
+                  return (
+                    <div key={shot} style={css.barRow}>
+                      <div style={css.barLabel}>{shot}{inPlan && <span style={css.planTag}>plan</span>}</div>
+                      <div style={css.barTrack}><div style={{...css.barFill, width:`${Math.round((count/maxS)*100)}%`, background:"#1d4e89"}} /></div>
+                      <div style={css.barCount}>{count} session{count!==1?"s":""}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Optimotion */}
+          {allOpt.length > 0 && (
+            <div style={css.reviewCard}>
+              <div style={css.reviewCardTitle}>🔄 Optimotion</div>
+              <div style={{ marginTop:12 }}>
+                {allOpt.map(opt => {
+                  const count = optCount[opt]||0;
+                  return (
+                    <div key={opt} style={css.barRow}>
+                      <div style={css.barLabel}>{opt}</div>
+                      <div style={css.barTrack}><div style={{...css.barFill, width:`${Math.round((count/maxO)*100)}%`, background:"#6b21a8"}} /></div>
+                      <div style={css.barCount}>{count} session{count!==1?"s":""}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Plan Completion */}
+          {planned.size > 0 && (
+            <div style={css.reviewCard}>
+              <div style={css.reviewCardTitle}>✅ Plan Completion</div>
+              <div style={{ display:"flex", gap:20, margin:"14px 0 10px", flexWrap:"wrap" }}>
+                <div style={{ textAlign:"center" }}>
+                  <div style={{ fontSize:34, fontWeight:800, color:"#2d6a4f" }}>{[...planned].filter(c=>worked.has(c)).length}</div>
+                  <div style={{ fontSize:12, color:"#6b7280" }}>clubs covered</div>
+                </div>
+                <div style={{ textAlign:"center" }}>
+                  <div style={{ fontSize:34, fontWeight:800, color:"#9ca3af" }}>{[...planned].filter(c=>!worked.has(c)).length}</div>
+                  <div style={{ fontSize:12, color:"#6b7280" }}>not covered</div>
+                </div>
+                <div style={{ textAlign:"center" }}>
+                  <div style={{ fontSize:34, fontWeight:800, color:"#1d4e89" }}>{totalSessions}</div>
+                  <div style={{ fontSize:12, color:"#6b7280" }}>total sessions</div>
+                </div>
+              </div>
+              <div style={{ display:"flex", flexWrap:"wrap" }}>
+                {[...planned].map(c => (
+                  <span key={c} style={{...css.coverChip, background:worked.has(c)?"#d1fae5":"#fee2e2", color:worked.has(c)?"#065f46":"#991b1b"}}>
+                    {worked.has(c)?"✓":"○"} {c}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Renewal */}
+          <div style={css.renewalBox}>
+            <div style={css.renewalTitle}>Ready to Keep Improving?</div>
+            <div style={css.renewalText}>
+              {activeStudent.name} has completed {totalSessions} lesson{totalSessions!==1?"s":""} and made real progress.
+              {scoreDiff !== null && scoreDiff > 0 ? ` They've already dropped ${scoreDiff} stroke${scoreDiff!==1?"s":""} off their average.` : ""}
+              {" "}Let's build on that momentum with a renewed lesson plan.
+            </div>
+          </div>
+
+        </div>
+      </div>
+    );
+  }
+
+  return null;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
