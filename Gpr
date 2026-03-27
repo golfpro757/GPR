@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>⛳ GolfTec Tracker</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, system-ui, sans-serif; background: #f0f4f8; padding: 20px; }
+        .header { background: #1a3a2a; color: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; text-align: center; }
+        .card { background: white; padding: 15px; border-radius: 10px; margin-bottom: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); border-left: 5px solid #2d6a4f; }
+        input, textarea { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ccc; border-radius: 8px; font-size: 16px; }
+        button { width: 100%; padding: 15px; background: #2d6a4f; color: white; border: none; border-radius: 8px; font-weight: bold; font-size: 16px; margin-top: 10px; }
+        .student-name { font-weight: bold; font-size: 18px; color: #1a3a2a; }
+        .empty-msg { text-align: center; color: #666; margin-top: 40px; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>GolfTec Tracker</h1>
+        <p>Mobile Version</p>
+    </div>
+
+    <div id="setup-section">
+        <h3>Add New Student</h3>
+        <input type="text" id="nameInput" placeholder="Student Name">
+        <textarea id="noteInput" placeholder="Goals / Notes" rows="3"></textarea>
+        <button onclick="addStudent()">Add Student</button>
+    </div>
+
+    <hr style="margin: 20px 0; border: 0; border-top: 1px solid #ccc;">
+
+    <div id="roster-section">
+        <h3>Your Roster</h3>
+        <div id="studentList"></div>
+    </div>
+
+    <script>
+        const STORAGE_KEY = "golftec_mobile_v1";
+
+        // Load data from phone storage
+        function loadStudents() {
+            const data = localStorage.getItem(STORAGE_KEY);
+            return data ? JSON.parse(data) : [];
+        }
+
+        // Save data to phone storage
+        function saveStudents(students) {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(students));
+            renderRoster();
+        }
+
+        function addStudent() {
+            const name = document.getElementById('nameInput').value;
+            const notes = document.getElementById('noteInput').value;
+            
+            if (!name) return alert("Please enter a name");
+
+            const students = loadStudents();
+            students.push({ id: Date.now(), name, notes });
+            
+            saveStudents(students);
+            
+            // Clear inputs
+            document.getElementById('nameInput').value = '';
+            document.getElementById('noteInput').value = '';
+        }
+
+        function deleteStudent(id) {
+            if (confirm("Delete this student?")) {
+                const students = loadStudents().filter(s => s.id !== id);
+                saveStudents(students);
+            }
+        }
+
+        function renderRoster() {
+            const list = document.getElementById('studentList');
+            const students = loadStudents();
+
+            if (students.length === 0) {
+                list.innerHTML = '<p class="empty-msg">No students yet.</p>';
+                return;
+            }
+
+            list.innerHTML = students.map(s => `
+                <div class="card">
+                    <div class="student-name">${s.name}</div>
+                    <div style="font-size: 14px; color: #555; margin: 5px 0;">${s.notes}</div>
+                    <button onclick="deleteStudent(${s.id})" style="background: #dc2626; padding: 5px; font-size: 12px; width: auto;">Remove</button>
+                </div>
+            `).join('');
+        }
+
+        // Initial render
+        renderRoster();
+    </script>
+</body>
+</html>
